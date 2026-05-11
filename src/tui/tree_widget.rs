@@ -15,7 +15,6 @@ pub struct TreeView<'a> {
     pub root: NodeId,
     pub selected: NodeId,
     pub expanded: &'a HashSet<NodeId>,
-    pub by_alloc: bool,
     pub focused: bool,
     pub scroll: u16,
 }
@@ -31,14 +30,7 @@ impl<'a> TreeView<'a> {
     /// Visible rows in display order under the current root.
     pub fn rows(&self) -> Vec<TreeRow> {
         let mut out = Vec::new();
-        walk_visible(
-            self.tree,
-            self.root,
-            0,
-            self.expanded,
-            self.by_alloc,
-            &mut out,
-        );
+        walk_visible(self.tree, self.root, 0, self.expanded, &mut out);
         out
     }
 }
@@ -48,7 +40,6 @@ fn walk_visible(
     id: NodeId,
     depth: u16,
     expanded: &HashSet<NodeId>,
-    by_alloc: bool,
     out: &mut Vec<TreeRow>,
 ) {
     let node = tree.get(id);
@@ -61,8 +52,8 @@ fn walk_visible(
         expanded: exp,
     });
     if is_dir && exp {
-        for child in tree.sorted_children(id, by_alloc) {
-            walk_visible(tree, child, depth + 1, expanded, by_alloc, out);
+        for child in tree.sorted_children(id) {
+            walk_visible(tree, child, depth + 1, expanded, out);
         }
     }
 }
@@ -105,7 +96,7 @@ impl<'a> Widget for TreeView<'a> {
                 "  "
             };
             let indent: String = "  ".repeat(row.depth as usize);
-            let size_str = format_size(node.size(self.by_alloc), BINARY);
+            let size_str = format_size(node.size, BINARY);
             let size_w = size_str.chars().count() as u16;
             let name_max = body
                 .width

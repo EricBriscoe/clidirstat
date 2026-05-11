@@ -27,12 +27,8 @@ impl Drop for PermsGuard {
     }
 }
 
-fn root_alloc(tree: &Tree) -> u64 {
-    tree.get(clidirstat::model::NodeId::ROOT).allocated_size
-}
-
-fn root_apparent(tree: &Tree) -> u64 {
-    tree.get(clidirstat::model::NodeId::ROOT).apparent_size
+fn root_size(tree: &Tree) -> u64 {
+    tree.get(clidirstat::model::NodeId::ROOT).size
 }
 
 fn find_named<'a>(tree: &'a Tree, name: &str) -> Option<&'a clidirstat::model::Node> {
@@ -55,8 +51,7 @@ fn flat_directory_sums_correctly() {
     make_file(&dir.path().join("c.bin"), 4096);
 
     let tree = scan(dir.path(), ScanOptions::default()).unwrap();
-    assert_eq!(root_apparent(&tree), 1024 + 2048 + 4096);
-    assert!(root_alloc(&tree) >= root_apparent(&tree));
+    assert!(root_size(&tree) >= 1024 + 2048 + 4096);
 }
 
 #[test]
@@ -68,9 +63,9 @@ fn nested_aggregation() {
     make_file(&dir.path().join("y"), 700);
 
     let tree = scan(dir.path(), ScanOptions::default()).unwrap();
-    assert_eq!(root_apparent(&tree), 1200);
+    assert!(root_size(&tree) >= 1200);
     let sub_node = find_named(&tree, "sub").expect("sub dir present");
-    assert_eq!(sub_node.apparent_size, 500);
+    assert!(sub_node.size >= 500);
     assert!(matches!(sub_node.kind, NodeKind::Dir));
 }
 
@@ -87,10 +82,10 @@ fn hardlinks_deduped() {
     // seen first by the scanner, but the *total* must be exactly 4096 on the
     // generic backend. The Darwin fast path doesn't fetch nlink so dedup is
     // skipped for performance; allow that case too.
-    let apparent = root_apparent(&tree);
+    let size = root_size(&tree);
     assert!(
-        apparent == 4096 || apparent == 8192,
-        "expected 4096 (deduped) or 8192 (Darwin fast path), got {apparent}"
+        size == 4096 || size == 8192,
+        "expected 4096 (deduped) or 8192 (Darwin fast path), got {size}"
     );
 }
 
@@ -103,9 +98,10 @@ fn symlinks_not_followed_by_default() {
     std::os::unix::fs::symlink(&target, &link).unwrap();
 
     let tree = scan(dir.path(), ScanOptions::default()).unwrap();
-    // root sum is real.txt's bytes plus the symlink's own (tiny) size.
-    // The symlink should not double-count the target.
-    assert!(root_apparent(&tree) < 100 * 2);
+    // The symlink should not double-count the target; root size stays bounded
+    // by the single 100-byte file (allocated to one filesystem block) plus a
+    // tiny symlink entry.
+    assert!(root_size(&tree) < 64 * 1024);
     assert!(find_named(&tree, "link").is_some());
 }
 
@@ -141,8 +137,7 @@ fn unicode_filename_roundtrips() {
 fn empty_directory_scans_clean() {
     let dir = tempfile::tempdir().unwrap();
     let tree = scan(dir.path(), ScanOptions::default()).unwrap();
-    assert_eq!(root_apparent(&tree), 0);
-    assert_eq!(root_alloc(&tree), 0);
+    assert_eq!(root_size(&tree), 0);
     assert_eq!(tree.nodes().len(), 1, "only root node expected");
     assert_eq!(tree.error_count, 0);
 }
@@ -172,7 +167,7 @@ fn exclude_glob_skips_matching_paths() {
         ..ScanOptions::default()
     };
     let tree = scan(dir.path(), opts).unwrap();
-    assert_eq!(root_apparent(&tree), 200);
+    assert!(root_size(&tree) >= 200);
     assert!(find_named(&tree, "node_modules").is_none());
     assert!(tree.skipped_count >= 1);
 }
@@ -200,10 +195,7 @@ fn streaming_handle_eventually_completes() {
     handle.join().unwrap();
 
     let t = tree.read().unwrap();
-    assert_eq!(
-        t.get(clidirstat::model::NodeId::ROOT).apparent_size,
-        1000 + 2000 + 3000
-    );
+    assert!(t.get(clidirstat::model::NodeId::ROOT).size >= 1000 + 2000 + 3000);
 }
 
 #[test]
@@ -242,6 +234,6 @@ fn time_machine_dirs_skipped() {
     make_file(&dir.path().join("normal"), 200);
 
     let tree = scan(dir.path(), ScanOptions::default()).unwrap();
-    assert_eq!(root_apparent(&tree), 200);
+    assert!(root_size(&tree) >= 200);
     assert!(tree.skipped_count >= 1);
 }

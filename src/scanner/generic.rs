@@ -37,13 +37,10 @@ pub(super) fn list_dir(path: &Path) -> std::io::Result<Vec<EntryInfo>> {
         } else {
             EntryKind::Other
         };
-        let apparent_size = meta.len();
-        let allocated_size = meta.blocks().saturating_mul(512);
         out.push(EntryInfo {
             name,
             kind,
-            apparent_size,
-            allocated_size,
+            size: meta.blocks().saturating_mul(512),
             dev: meta.dev(),
             ino: meta.ino(),
             nlink: meta.nlink(),

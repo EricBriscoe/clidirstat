@@ -19,9 +19,10 @@ The wedge: **diskonaut's UX with `dirstat-rs`-class speed, by using macOS's
 - **Read-only.** No delete, move, or rename operations. Users `rm` themselves
   after finding offenders. If anyone proposes adding mutation, push back.
   This is a deliberate scope choice, not an oversight.
-- **Allocated size by default.** Matches `du`; `--apparent-size` flips it.
-  APFS clones / compressed files make apparent diverge wildly from
-  allocated, and "what's on my disk" is the allocated answer.
+- **Allocated size is the only size tracked.** `st_blocks * 512`; it matches
+  what `du` reports and what's freed on delete. Apparent (logical) size
+  diverges wildly on APFS clones / compressed files, so we deliberately
+  don't expose it.
 - **Stop at mount-point boundaries by default** (`--cross-filesystems` to opt
   in). Network mounts, time-machine snapshots, and `/System` firmlinks
   otherwise wreck both runtime and reported totals.

@@ -28,23 +28,18 @@ use treemap_widget::TreemapWidget;
 
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-pub fn run(handle: ScanHandle, by_alloc: bool, theme: Theme) -> Result<()> {
+pub fn run(handle: ScanHandle, theme: Theme) -> Result<()> {
     let mut term = ratatui::try_init()?;
-    let result = run_app(&mut term, handle, by_alloc, theme);
+    let result = run_app(&mut term, handle, theme);
     ratatui::restore();
     result
 }
 
-fn run_app(
-    term: &mut ratatui::DefaultTerminal,
-    handle: ScanHandle,
-    by_alloc: bool,
-    theme: Theme,
-) -> Result<()> {
+fn run_app(term: &mut ratatui::DefaultTerminal, handle: ScanHandle, theme: Theme) -> Result<()> {
     let tree = handle.tree.clone();
     let cancel = handle.cancel.clone();
     let done = handle.done.clone();
-    let mut app = App::new(tree, cancel.clone(), done, by_alloc, theme);
+    let mut app = App::new(tree, cancel.clone(), done, theme);
     loop {
         term.draw(|f| app.render(f))?;
         if event::poll(Duration::from_millis(200))?
@@ -73,7 +68,6 @@ struct App {
     selected: NodeId,
     expanded: HashSet<NodeId>,
     zoom_stack: Vec<NodeId>,
-    by_alloc: bool,
     focus: Focus,
     scroll: u16,
     show_help: bool,
@@ -89,7 +83,6 @@ impl App {
         tree: Arc<RwLock<Tree>>,
         cancel: Arc<AtomicBool>,
         done: Arc<AtomicBool>,
-        by_alloc: bool,
         theme: Theme,
     ) -> Self {
         let mut expanded = HashSet::new();
@@ -100,7 +93,6 @@ impl App {
             selected: NodeId::ROOT,
             expanded,
             zoom_stack: Vec::new(),
-            by_alloc,
             focus: Focus::Tree,
             scroll: 0,
             show_help: false,
@@ -137,7 +129,6 @@ impl App {
             tree: &tree,
             root,
             selected: self.selected,
-            by_alloc: self.by_alloc,
             theme: self.theme,
         };
         f.render_widget(treemap, main[0]);
@@ -159,7 +150,6 @@ impl App {
             root,
             selected: self.selected,
             expanded: &self.expanded,
-            by_alloc: self.by_alloc,
             focused: self.focus == Focus::Tree,
             scroll: self.scroll,
         };
@@ -174,9 +164,9 @@ impl App {
 
     fn render_status_bar(&self, tree: &Tree, area: ratatui::layout::Rect, f: &mut ratatui::Frame) {
         let root = self.current_root();
-        let total = tree.get(root).size(self.by_alloc);
+        let total = tree.get(root).size;
         let sel = tree.get(self.selected);
-        let sel_size = sel.size(self.by_alloc);
+        let sel_size = sel.size;
         let scanning = !self.done.load(Ordering::Acquire);
         let pct = if total > 0 {
             (sel_size as f64 / total as f64) * 100.0
@@ -205,7 +195,7 @@ impl App {
         };
 
         // Right: minimal keymap hints.
-        let right = "q quit · ? help · Tab focus · Enter zoom · a units  ";
+        let right = "q quit · ? help · Tab focus · Enter zoom  ";
 
         let (bar_bg, strong_fg, muted_fg) = match self.theme {
             Theme::Light => (
@@ -247,7 +237,6 @@ impl App {
             Line::from("  Enter   zoom into selected dir"),
             Line::from("  Esc/Bs  zoom out"),
             Line::from("  Tab     toggle focus"),
-            Line::from("  a       toggle apparent/allocated"),
             Line::from("  g/G     top / bottom"),
             Line::from("  ?       toggle this help"),
             Line::from("  q       quit"),
@@ -278,7 +267,6 @@ impl App {
                     Focus::Treemap => Focus::Tree,
                 };
             }
-            KeyCode::Char('a') => self.by_alloc = !self.by_alloc,
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Char('g') => self.move_to_top(),
@@ -299,7 +287,6 @@ impl App {
             root: self.current_root(),
             selected: self.selected,
             expanded: &self.expanded,
-            by_alloc: self.by_alloc,
             focused: false,
             scroll: 0,
         };

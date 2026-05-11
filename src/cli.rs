@@ -28,10 +28,6 @@ pub struct Args {
     #[arg(value_name = "PATH")]
     pub path: Option<PathBuf>,
 
-    /// Show apparent (logical) file sizes instead of allocated (on-disk) sizes.
-    #[arg(long)]
-    pub apparent_size: bool,
-
     /// Cross mount points (default: stop at filesystem boundaries).
     #[arg(long)]
     pub cross_filesystems: bool,

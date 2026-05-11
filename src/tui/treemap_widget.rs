@@ -26,7 +26,6 @@ pub struct TreemapWidget<'a> {
     pub tree: &'a Tree,
     pub root: NodeId,
     pub selected: NodeId,
-    pub by_alloc: bool,
     pub theme: Theme,
 }
 
@@ -56,7 +55,6 @@ impl<'a> Widget for TreemapWidget<'a> {
             0,
             false,
             self.selected,
-            self.by_alloc,
             self.theme,
             &mut canvas,
             &mut bevel,
@@ -83,7 +81,7 @@ impl<'a> Widget for TreemapWidget<'a> {
             area,
             buf,
         );
-        overlay_label(self.tree, self.root, area, buf, self.by_alloc, self.theme);
+        overlay_label(self.tree, self.root, area, buf, self.theme);
 
         if vw == 0 || vh == 0 {
             let msg = "(empty)";
@@ -102,7 +100,6 @@ fn paint(
     depth: u8,
     in_cache_subtree: bool,
     selected: NodeId,
-    by_alloc: bool,
     theme: Theme,
     canvas: &mut [(u8, u8, u8)],
     bevel: &mut [i16],
@@ -122,10 +119,10 @@ fn paint(
         NodeKind::Dir => {
             let in_cache = in_cache_subtree || fs_categories::is_cache_dir(&node.name);
             let children: Vec<(u64, NodeId)> = tree
-                .sorted_children(node_id, by_alloc)
+                .sorted_children(node_id)
                 .into_iter()
                 .filter_map(|id| {
-                    let s = tree.get(id).size(by_alloc);
+                    let s = tree.get(id).size;
                     if s == 0 { None } else { Some((s, id)) }
                 })
                 .collect();
@@ -154,7 +151,6 @@ fn paint(
                     depth.saturating_add(1),
                     in_cache,
                     selected,
-                    by_alloc,
                     theme,
                     canvas,
                     bevel,
@@ -342,14 +338,7 @@ fn mark_outline(outline: &mut [bool], vw: u16, vh: u16, rect: Rect) {
 }
 
 /// Draws the currently-focused root path along the top edge of the pane.
-fn overlay_label(
-    tree: &Tree,
-    root: NodeId,
-    area: TuiRect,
-    buf: &mut Buffer,
-    by_alloc: bool,
-    theme: Theme,
-) {
+fn overlay_label(tree: &Tree, root: NodeId, area: TuiRect, buf: &mut Buffer, theme: Theme) {
     if area.width < 6 {
         return;
     }
@@ -357,7 +346,7 @@ fn overlay_label(
     let label = format!(
         " {} · {} ",
         tree.path_of(root).display(),
-        humansize::format_size(node.size(by_alloc), humansize::BINARY),
+        humansize::format_size(node.size, humansize::BINARY),
     );
     let max = area.width as usize;
     let trimmed = trim_label(&label, max);

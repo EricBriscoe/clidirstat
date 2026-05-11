@@ -54,8 +54,8 @@ impl From<EntryKind> for NodeKind {
 pub struct EntryInfo {
     pub name: String,
     pub kind: EntryKind,
-    pub apparent_size: u64,
-    pub allocated_size: u64,
+    /// Allocated bytes on disk (`st_blocks * 512`).
+    pub size: u64,
     pub dev: u64,
     pub ino: u64,
     pub nlink: u64,
@@ -226,15 +226,13 @@ fn process_dir<'scope>(scope: &Scope<'scope>, path: PathBuf, parent_id: NodeId, 
                 continue;
             }
 
-            let (apparent, allocated) = if entry.nlink > 1 && !matches!(entry.kind, EntryKind::Dir)
+            let size = if entry.nlink > 1
+                && !matches!(entry.kind, EntryKind::Dir)
+                && ctx.inodes.insert((entry.dev, entry.ino), ()).is_some()
             {
-                if ctx.inodes.insert((entry.dev, entry.ino), ()).is_some() {
-                    (0, 0)
-                } else {
-                    (entry.apparent_size, entry.allocated_size)
-                }
+                0 // hardlink we've already counted via its first occurrence
             } else {
-                (entry.apparent_size, entry.allocated_size)
+                entry.size
             };
 
             let follow_symlink =
@@ -245,8 +243,7 @@ fn process_dir<'scope>(scope: &Scope<'scope>, path: PathBuf, parent_id: NodeId, 
                 parent: Some(parent_id),
                 kind: entry.kind.into(),
                 children: Vec::new(),
-                apparent_size: apparent,
-                allocated_size: allocated,
+                size,
                 had_error: false,
             };
             let id = t.push(parent_id, node);
@@ -255,7 +252,7 @@ fn process_dir<'scope>(scope: &Scope<'scope>, path: PathBuf, parent_id: NodeId, 
             // bump_ancestors calls, so they get the right totals without
             // double-counting.
             if !is_dir {
-                t.bump_ancestors(id, apparent, allocated);
+                t.bump_ancestors(id, size);
             }
             if is_dir || follow_symlink {
                 subdir_paths.push((child_path, id));

@@ -42,14 +42,12 @@ fn real_main() -> Result<()> {
         excludes,
     };
 
-    let by_alloc = !args.apparent_size;
-
     if args.timeit {
         let started = Instant::now();
         let tree = scanner::scan(&path, opts).context("scan failed")?;
         let elapsed = started.elapsed();
         let files = tree.len().saturating_sub(1);
-        let total = tree.get(NodeId::ROOT).size(by_alloc);
+        let total = tree.get(NodeId::ROOT).size;
         let errs = if tree.error_count > 0 {
             format!("  ({} errors)", tree.error_count)
         } else {
@@ -69,9 +67,9 @@ fn real_main() -> Result<()> {
         let tree = scanner::scan(&path, opts).context("scan failed")?;
         let elapsed = started.elapsed();
         if args.json {
-            print_json(&tree, args.top, by_alloc)?;
+            print_json(&tree, args.top)?;
         } else {
-            print_summary(&tree, args.top, by_alloc, elapsed);
+            print_summary(&tree, args.top, elapsed);
         }
     } else {
         // Detect theme BEFORE entering raw mode (OSC queries need stdin/stdout).
@@ -82,7 +80,7 @@ fn real_main() -> Result<()> {
             ThemeChoice::NoColor => Theme::NoColor,
         };
         let handle = scanner::scan_streaming(&path, opts).context("scan failed")?;
-        tui::run(handle, by_alloc, theme).context("tui crashed")?;
+        tui::run(handle, theme).context("tui crashed")?;
     }
     Ok(())
 }
@@ -99,19 +97,19 @@ fn build_excludes(patterns: &[String]) -> Result<Option<globset::GlobSet>> {
 }
 
 /// Sorted (id, size, kind) for every non-root node, descending by size.
-fn ranked_entries(tree: &Tree, by_alloc: bool) -> Vec<(NodeId, u64, NodeKind)> {
+fn ranked_entries(tree: &Tree) -> Vec<(NodeId, u64, NodeKind)> {
     let mut all: Vec<(NodeId, u64, NodeKind)> = tree
         .nodes()
         .iter()
         .enumerate()
         .skip(1)
-        .map(|(i, n)| (NodeId(i as u32), n.size(by_alloc), n.kind))
+        .map(|(i, n)| (NodeId(i as u32), n.size, n.kind))
         .collect();
     all.sort_by_key(|(_, s, _)| std::cmp::Reverse(*s));
     all
 }
 
-fn print_summary(tree: &Tree, top: usize, by_alloc: bool, elapsed: std::time::Duration) {
+fn print_summary(tree: &Tree, top: usize, elapsed: std::time::Duration) {
     let root = tree.get(NodeId::ROOT);
     let errs = if tree.error_count > 0 {
         format!(", {} errors", tree.error_count)
@@ -120,13 +118,13 @@ fn print_summary(tree: &Tree, top: usize, by_alloc: bool, elapsed: std::time::Du
     };
     println!(
         "{}  {}  ({} files, {:.2?}{errs})",
-        format_size(root.size(by_alloc), BINARY),
+        format_size(root.size, BINARY),
         tree.root_path.display(),
         tree.len(),
         elapsed,
     );
 
-    for (id, size, _kind) in ranked_entries(tree, by_alloc)
+    for (id, size, _kind) in ranked_entries(tree)
         .into_iter()
         .filter(|(_, _, k)| !matches!(k, NodeKind::Dir))
         .take(top)
@@ -136,7 +134,7 @@ fn print_summary(tree: &Tree, top: usize, by_alloc: bool, elapsed: std::time::Du
     }
 }
 
-fn print_json(tree: &Tree, top: usize, by_alloc: bool) -> Result<()> {
+fn print_json(tree: &Tree, top: usize) -> Result<()> {
     use serde::Serialize;
     #[derive(Serialize)]
     struct Out<'a> {
@@ -153,7 +151,7 @@ fn print_json(tree: &Tree, top: usize, by_alloc: bool) -> Result<()> {
         kind: &'static str,
     }
 
-    let items: Vec<Item> = ranked_entries(tree, by_alloc)
+    let items: Vec<Item> = ranked_entries(tree)
         .into_iter()
         .take(top)
         .map(|(id, size, kind)| Item {
@@ -164,7 +162,7 @@ fn print_json(tree: &Tree, top: usize, by_alloc: bool) -> Result<()> {
         .collect();
     let out = Out {
         root: &tree.root_path,
-        total: tree.get(NodeId::ROOT).size(by_alloc),
+        total: tree.get(NodeId::ROOT).size,
         files: tree.len(),
         errors: tree.error_count,
         top: items,

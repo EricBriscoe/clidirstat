@@ -35,19 +35,10 @@ pub struct Node {
     pub parent: Option<NodeId>,
     pub kind: NodeKind,
     pub children: Vec<NodeId>,
-    pub apparent_size: u64,
-    pub allocated_size: u64,
+    /// Allocated bytes on disk (`st_blocks * 512`). The only size metric the
+    /// tool tracks; see CLAUDE.md "Invariants".
+    pub size: u64,
     pub had_error: bool,
-}
-
-impl Node {
-    pub fn size(&self, by_alloc: bool) -> u64 {
-        if by_alloc {
-            self.allocated_size
-        } else {
-            self.apparent_size
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -68,8 +59,7 @@ impl Tree {
             parent: None,
             kind: NodeKind::Dir,
             children: Vec::new(),
-            apparent_size: 0,
-            allocated_size: 0,
+            size: 0,
             had_error: false,
         };
         Self {
@@ -89,19 +79,18 @@ impl Tree {
         id
     }
 
-    /// Walk parent links from `id` upward, saturating-adding `apparent` and
-    /// `allocated` to each ancestor. Used by the streaming scanner so the
-    /// tree's directory totals are always current without a final post-order
-    /// pass. Bumps the generation counter.
-    pub fn bump_ancestors(&mut self, id: NodeId, apparent: u64, allocated: u64) {
-        if apparent == 0 && allocated == 0 {
+    /// Walk parent links from `id` upward, saturating-adding `size` to each
+    /// ancestor. Used by the streaming scanner so the tree's directory
+    /// totals are always current without a final post-order pass. Bumps
+    /// the generation counter.
+    pub fn bump_ancestors(&mut self, id: NodeId, size: u64) {
+        if size == 0 {
             return;
         }
         let mut cur = self.nodes[id.index()].parent;
         while let Some(p) = cur {
             let n = &mut self.nodes[p.index()];
-            n.apparent_size = n.apparent_size.saturating_add(apparent);
-            n.allocated_size = n.allocated_size.saturating_add(allocated);
+            n.size = n.size.saturating_add(size);
             cur = n.parent;
         }
         self.generation = self.generation.wrapping_add(1);
@@ -146,15 +135,12 @@ impl Tree {
         for id in order {
             let node = &self.nodes[id.index()];
             if matches!(node.kind, NodeKind::Dir) {
-                let (mut app, mut alloc) = (0u64, 0u64);
+                let mut sum = 0u64;
                 for &child in &node.children.clone() {
-                    let c = &self.nodes[child.index()];
-                    app = app.saturating_add(c.apparent_size);
-                    alloc = alloc.saturating_add(c.allocated_size);
+                    sum = sum.saturating_add(self.nodes[child.index()].size);
                 }
                 let n = &mut self.nodes[id.index()];
-                n.apparent_size = n.apparent_size.saturating_add(app);
-                n.allocated_size = n.allocated_size.saturating_add(alloc);
+                n.size = n.size.saturating_add(sum);
             }
         }
     }
@@ -175,10 +161,10 @@ impl Tree {
         order
     }
 
-    /// Children sorted descending by allocated-or-apparent size.
-    pub fn sorted_children(&self, id: NodeId, by_alloc: bool) -> Vec<NodeId> {
+    /// Children sorted descending by size.
+    pub fn sorted_children(&self, id: NodeId) -> Vec<NodeId> {
         let mut v = self.nodes[id.index()].children.clone();
-        v.sort_by_key(|c| std::cmp::Reverse(self.nodes[c.index()].size(by_alloc)));
+        v.sort_by_key(|c| std::cmp::Reverse(self.nodes[c.index()].size));
         v
     }
 }
@@ -187,105 +173,57 @@ impl Tree {
 mod tests {
     use super::*;
 
+    fn file(name: &str, parent: NodeId, size: u64) -> Node {
+        Node {
+            name: name.into(),
+            parent: Some(parent),
+            kind: NodeKind::File,
+            children: vec![],
+            size,
+            had_error: false,
+        }
+    }
+
+    fn dir(name: &str, parent: NodeId) -> Node {
+        Node {
+            name: name.into(),
+            parent: Some(parent),
+            kind: NodeKind::Dir,
+            children: vec![],
+            size: 0,
+            had_error: false,
+        }
+    }
+
     #[test]
     fn bump_ancestors_propagates_through_chain() {
         let mut t = Tree::new(PathBuf::from("/x"), "/x".into());
-        let a = t.push(
-            NodeId::ROOT,
-            Node {
-                name: "a".into(),
-                parent: Some(NodeId::ROOT),
-                kind: NodeKind::Dir,
-                children: vec![],
-                apparent_size: 0,
-                allocated_size: 0,
-                had_error: false,
-            },
-        );
-        let f = t.push(
-            a,
-            Node {
-                name: "f".into(),
-                parent: Some(a),
-                kind: NodeKind::File,
-                children: vec![],
-                apparent_size: 100,
-                allocated_size: 4096,
-                had_error: false,
-            },
-        );
-        t.bump_ancestors(f, 100, 4096);
-        assert_eq!(t.get(a).apparent_size, 100);
-        assert_eq!(t.get(a).allocated_size, 4096);
-        assert_eq!(t.get(NodeId::ROOT).apparent_size, 100);
-        assert_eq!(t.get(NodeId::ROOT).allocated_size, 4096);
+        let a = t.push(NodeId::ROOT, dir("a", NodeId::ROOT));
+        let f = t.push(a, file("f", a, 4096));
+        t.bump_ancestors(f, 4096);
+        assert_eq!(t.get(a).size, 4096);
+        assert_eq!(t.get(NodeId::ROOT).size, 4096);
     }
 
     #[test]
     fn generation_advances_on_mutations() {
         let mut t = Tree::new(PathBuf::from("/x"), "/x".into());
         let g0 = t.generation;
-        let id = t.push(
-            NodeId::ROOT,
-            Node {
-                name: "y".into(),
-                parent: Some(NodeId::ROOT),
-                kind: NodeKind::File,
-                children: vec![],
-                apparent_size: 1,
-                allocated_size: 1,
-                had_error: false,
-            },
-        );
+        let id = t.push(NodeId::ROOT, file("y", NodeId::ROOT, 1));
         assert!(t.generation > g0);
         let g1 = t.generation;
-        t.bump_ancestors(id, 1, 1);
+        t.bump_ancestors(id, 1);
         assert!(t.generation > g1);
     }
 
     #[test]
     fn aggregate_sums_children() {
         let mut t = Tree::new(PathBuf::from("/x"), "/x".into());
-        let a = t.push(
-            NodeId::ROOT,
-            Node {
-                name: "a".into(),
-                parent: Some(NodeId::ROOT),
-                kind: NodeKind::Dir,
-                children: vec![],
-                apparent_size: 0,
-                allocated_size: 0,
-                had_error: false,
-            },
-        );
-        t.push(
-            a,
-            Node {
-                name: "f1".into(),
-                parent: Some(a),
-                kind: NodeKind::File,
-                children: vec![],
-                apparent_size: 100,
-                allocated_size: 4096,
-                had_error: false,
-            },
-        );
-        t.push(
-            a,
-            Node {
-                name: "f2".into(),
-                parent: Some(a),
-                kind: NodeKind::File,
-                children: vec![],
-                apparent_size: 50,
-                allocated_size: 4096,
-                had_error: false,
-            },
-        );
+        let a = t.push(NodeId::ROOT, dir("a", NodeId::ROOT));
+        t.push(a, file("f1", a, 4096));
+        t.push(a, file("f2", a, 4096));
         t.aggregate();
-        assert_eq!(t.get(a).apparent_size, 150);
-        assert_eq!(t.get(a).allocated_size, 8192);
-        assert_eq!(t.get(NodeId::ROOT).apparent_size, 150);
-        assert_eq!(t.get(NodeId::ROOT).allocated_size, 8192);
+        assert_eq!(t.get(a).size, 8192);
+        assert_eq!(t.get(NodeId::ROOT).size, 8192);
     }
 }

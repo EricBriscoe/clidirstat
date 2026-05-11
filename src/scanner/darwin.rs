@@ -51,7 +51,6 @@ const ATTR_CMN_FILEID: u32 = 0x0200_0000;
 const ATTR_CMN_RETURNED_ATTRS: u32 = 0x8000_0000;
 
 const ATTR_FILE_ALLOCSIZE: u32 = 0x0000_0004;
-const ATTR_FILE_DATALENGTH: u32 = 0x0000_0200;
 
 // VNODE types (from <sys/vnode.h>).
 const VREG: u32 = 1;
@@ -109,7 +108,7 @@ fn list_bulk(path: &Path) -> std::io::Result<Vec<EntryInfo>> {
             | ATTR_CMN_FILEID,
         volattr: 0,
         dirattr: 0,
-        fileattr: ATTR_FILE_DATALENGTH | ATTR_FILE_ALLOCSIZE,
+        fileattr: ATTR_FILE_ALLOCSIZE,
         forkattr: 0,
     };
     let mut buf = vec![0u8; BUF_SIZE];
@@ -146,7 +145,6 @@ fn list_bulk(path: &Path) -> std::io::Result<Vec<EntryInfo>> {
             let mut dev: u64 = 0;
             let mut ino: u64 = 0;
             let mut objtype: u32 = 0;
-            let mut data_len: u64 = 0;
             let mut alloc_size: u64 = 0;
 
             // Order of attrs follows declaration in attrlist, restricted to
@@ -177,17 +175,9 @@ fn list_bulk(path: &Path) -> std::io::Result<Vec<EntryInfo>> {
                 ino = u64::from_ne_bytes(buf[p..p + 8].try_into().unwrap());
                 p += 8;
             }
-            // fileattr order in the buffer is by bit position, low to high:
-            //   ATTR_FILE_ALLOCSIZE  = bit 2
-            //   ATTR_FILE_DATALENGTH = bit 9
             if returned.fileattr & ATTR_FILE_ALLOCSIZE != 0 {
                 p = (p + 7) & !7;
                 alloc_size = u64::from_ne_bytes(buf[p..p + 8].try_into().unwrap());
-                p += 8;
-            }
-            if returned.fileattr & ATTR_FILE_DATALENGTH != 0 {
-                p = (p + 7) & !7;
-                data_len = u64::from_ne_bytes(buf[p..p + 8].try_into().unwrap());
                 p += 8;
             }
             let _ = p;
@@ -199,15 +189,14 @@ fn list_bulk(path: &Path) -> std::io::Result<Vec<EntryInfo>> {
                     VLNK => EntryKind::Symlink,
                     _ => EntryKind::Other,
                 };
-                // getattrlistbulk doesn't return nlink; assume 1 here; the scanner
-                // skips hardlink dedup when nlink == 1, which is the desired default
-                // for fast scans. For correctness on hardlink-heavy trees, callers
-                // can opt into the generic path. (See README.)
+                // getattrlistbulk doesn't return nlink; assume 1 here. The
+                // scanner skips hardlink dedup when nlink == 1, so a tree
+                // with lots of hardlinks reports the inflated total via the
+                // fast path. (CLAUDE.md "Invariants".)
                 out.push(EntryInfo {
                     name,
                     kind,
-                    apparent_size: data_len,
-                    allocated_size: alloc_size,
+                    size: alloc_size,
                     dev,
                     ino,
                     nlink: 1,
