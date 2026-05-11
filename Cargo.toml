@@ -2,7 +2,7 @@
 name = "clidirstat"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Terminal disk usage analyzer with treemap visualization (WinDirStat for your CLI)"
 license = "MIT"
 repository = "https://github.com/EricBriscoe/clidirstat"

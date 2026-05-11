@@ -24,7 +24,7 @@ cd clidirstat
 cargo install --path .
 ```
 
-Requires Rust 1.85+ (rustup will fetch it via `rust-toolchain.toml`).
+Requires Rust 1.88+ (rustup will fetch it via `rust-toolchain.toml`).
 
 ## Performance
 
