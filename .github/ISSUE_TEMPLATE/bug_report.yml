@@ -1,0 +1,43 @@
+name: Bug report
+description: Something doesn't work as expected.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A short description of the bug, including any error message.
+      placeholder: "clidirstat panicked when scanning /System/Volumes/Preboot…"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How can we reproduce it?
+      description: Minimal command + filesystem context.
+      placeholder: |
+        clidirstat --no-tui ~/path/to/dir
+        # …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: clidirstat version
+      description: Output of `clidirstat --version`.
+      placeholder: "clidirstat 0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS, arch, terminal.
+      placeholder: "macOS 26.5 (Apple Silicon), Ghostty 1.2"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Backtrace, screenshots, related issues.

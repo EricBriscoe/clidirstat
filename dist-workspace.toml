@@ -1,0 +1,27 @@
+# cargo-dist (https://opensource.axo.dev/cargo-dist/) release configuration.
+# Run `dist plan` to dry-run, `dist generate` to refresh the GitHub Actions
+# workflow, and push a `v*` tag to trigger a real release.
+
+[workspace]
+members = ["cargo:."]
+
+[dist]
+# Pinned for reproducible CI; bump with `dist update`.
+cargo-dist-version = "0.31.0"
+ci = "github"
+installers = ["shell", "homebrew"]
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+]
+# Personal Homebrew tap. dist pushes the generated formula here on every
+# release. Repo must exist before the first release; secret
+# HOMEBREW_TAP_TOKEN (a PAT with `repo` scope) must be configured.
+tap = "EricBriscoe/homebrew-clidirstat"
+publish-jobs = ["homebrew"]
+# Only run a release planning pass on PRs; don't upload artifacts.
+pr-run-mode = "plan"
+# Skip publishing on tags whose name suggests a pre-release (e.g. `v0.3.0-rc1`).
+publish-prereleases = false
