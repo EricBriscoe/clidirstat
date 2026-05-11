@@ -11,6 +11,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
+use crate::fs_categories::Category;
 use crate::model::{NodeId, NodeKind, Tree};
 use crate::scanner::ScanHandle;
 use crate::theme::Theme;
@@ -71,6 +72,7 @@ struct App {
     focus: Focus,
     scroll: u16,
     show_help: bool,
+    show_legend: bool,
     started_at: Instant,
     theme: Theme,
     /// Optional handle the App owns to issue cancellations when navigating
@@ -96,6 +98,7 @@ impl App {
             focus: Focus::Tree,
             scroll: 0,
             show_help: false,
+            show_legend: false,
             started_at: Instant::now(),
             theme,
             _cancel: cancel,
@@ -160,6 +163,9 @@ impl App {
         if self.show_help {
             self.render_help(f, area);
         }
+        if self.show_legend {
+            self.render_legend(f, area);
+        }
     }
 
     fn render_status_bar(&self, tree: &Tree, area: ratatui::layout::Rect, f: &mut ratatui::Frame) {
@@ -220,7 +226,7 @@ impl App {
 
     fn render_help(&self, f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let w = 50.min(area.width.saturating_sub(4));
-        let h = 14.min(area.height.saturating_sub(4));
+        let h = 15.min(area.height.saturating_sub(4));
         let x = area.x + (area.width - w) / 2;
         let y = area.y + (area.height - h) / 2;
         let rect = ratatui::layout::Rect::new(x, y, w, h);
@@ -238,6 +244,7 @@ impl App {
             Line::from("  Esc/Bs  zoom out"),
             Line::from("  Tab     toggle focus"),
             Line::from("  g/G     top / bottom"),
+            Line::from("  c       toggle color legend"),
             Line::from("  ?       toggle this help"),
             Line::from("  q       quit"),
         ];
@@ -246,8 +253,62 @@ impl App {
         f.render_widget(para, rect);
     }
 
+    fn render_legend(&self, f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        let w = 56.min(area.width.saturating_sub(4));
+        let h = 16.min(area.height.saturating_sub(4));
+        let x = area.x + (area.width - w) / 2;
+        let y = area.y + (area.height - h) / 2;
+        let rect = ratatui::layout::Rect::new(x, y, w, h);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Legend ")
+            .style(Style::default().bg(Color::Black).fg(Color::White));
+
+        let rows: &[(Category, &str, &str)] = &[
+            (Category::Code, "Code", "rs, py, js, ts, go…"),
+            (Category::Image, "Image", "jpg, png, gif, svg…"),
+            (Category::Video, "Video", "mp4, mov, mkv, webm…"),
+            (Category::Audio, "Audio", "mp3, flac, wav, m4a…"),
+            (Category::Docs, "Docs", "md, pdf, txt, docx…"),
+            (Category::Archive, "Archive", "zip, tar, gz, 7z, dmg…"),
+            (Category::Binary, "Binary", "exe, dll, so, dylib, wasm…"),
+            (Category::Data, "Data", "json, yaml, csv, sqlite…"),
+            (Category::Cache, "Cache", "node_modules, target, .cache…"),
+            (Category::Other, "Other", "unrecognised extensions"),
+        ];
+
+        let mut lines: Vec<Line> = Vec::with_capacity(rows.len() + 3);
+        lines.push(Line::from(""));
+        for (cat, name, examples) in rows {
+            let (r, g, b) = self.theme.rgb(*cat);
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("  ", Style::default().bg(Color::Rgb(r, g, b))),
+                Span::raw(format!("  {:<8}  {}", name, examples)),
+            ]));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            "  press c or Esc to close",
+            Style::default().fg(Color::Rgb(140, 140, 150)),
+        ));
+
+        let para = Paragraph::new(lines).block(block);
+        f.render_widget(ratatui::widgets::Clear, rect);
+        f.render_widget(para, rect);
+    }
+
     /// Returns `true` if the app should exit.
     fn handle_key(&mut self, code: KeyCode, mods: KeyModifiers) -> bool {
+        if self.show_legend {
+            match code {
+                KeyCode::Char('c') | KeyCode::Esc | KeyCode::Char('q') => {
+                    self.show_legend = false;
+                }
+                _ => {}
+            }
+            return false;
+        }
         if self.show_help {
             match code {
                 KeyCode::Char('?') | KeyCode::Esc | KeyCode::Char('q') => {
@@ -260,7 +321,14 @@ impl App {
         match code {
             KeyCode::Char('q') => return true,
             KeyCode::Char('c') if mods.contains(KeyModifiers::CONTROL) => return true,
-            KeyCode::Char('?') => self.show_help = true,
+            KeyCode::Char('c') => {
+                self.show_help = false;
+                self.show_legend = true;
+            }
+            KeyCode::Char('?') => {
+                self.show_legend = false;
+                self.show_help = true;
+            }
             KeyCode::Tab => {
                 self.focus = match self.focus {
                     Focus::Tree => Focus::Treemap,
