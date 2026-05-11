@@ -28,58 +28,71 @@ The benchmark reports the same total as `du -sh` in about one-third the time.
 
 ## Install
 
-> v0.2 is **macOS** (Intel + Apple Silicon) and **Linux** (x86_64 + arm64).
-> Windows is planned for v0.3.
+**Works on macOS and Linux.** Windows is planned for v0.3.
 
-### Shell one-liner
+### The easy way
+
+Open Terminal and paste this single line, then press **Enter**:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/EricBriscoe/clidirstat/releases/latest/download/clidirstat-installer.sh | sh
 ```
 
-Downloads the right binary for your platform, verifies its SHA-256, and drops
-it into `~/.local/bin` (override with `--prefix=/usr/local`).
+The installer figures out which version your computer needs, downloads it,
+checks it's not corrupted, and installs it for you. It takes about five
+seconds.
 
-### Homebrew
+When it finishes, **close your Terminal window and open a new one** (so it
+picks up the new command), then type:
+
+```sh
+clidirstat
+```
+
+…and you should see the treemap. Press **`q`** to quit.
+
+If you get **`command not found: clidirstat`** after opening a new window,
+copy the last line the installer printed. It tells you what to
+add to your shell profile.
+
+---
+
+### Already use Homebrew? (macOS / Linuxbrew)
 
 ```sh
 brew install EricBriscoe/clidirstat/clidirstat
 ```
 
-### Cargo
+### Already use Rust?
 
 ```sh
 cargo install clidirstat
 ```
 
-Or build the latest from this repo:
-
-```sh
-cargo install --git https://github.com/EricBriscoe/clidirstat
-```
-
-### Pre-built binaries
-
-Grab a tarball directly from the [releases page](https://github.com/EricBriscoe/clidirstat/releases/latest).
-Each release includes:
-
-- `clidirstat-aarch64-apple-darwin.tar.xz`
-- `clidirstat-x86_64-apple-darwin.tar.xz`
-- `clidirstat-x86_64-unknown-linux-gnu.tar.xz`
-- `clidirstat-aarch64-unknown-linux-gnu.tar.xz`
-- a `dist-manifest.json` and signed checksum file
-
-### From source
+### Want to build it yourself from source
 
 ```sh
 git clone https://github.com/EricBriscoe/clidirstat
 cd clidirstat
 cargo build --release
-./target/release/clidirstat --help
+./target/release/clidirstat
 ```
 
-Requires Rust 1.85+ (uses edition 2024). The `rust-toolchain.toml` will pull
-the right version automatically with rustup.
+You'll need [Rust](https://rustup.rs) 1.85 or newer. The `rust-toolchain.toml`
+in the repo will install the right version automatically the first time you
+run `cargo build`.
+
+### Just want the binary
+
+Each release on the [releases page](https://github.com/EricBriscoe/clidirstat/releases/latest)
+has pre-built `.tar.xz` downloads for every supported platform, plus a
+SHA-256 checksum file you can verify against.
+
+### How to uninstall
+
+If you used the easy installer: delete the binary at `~/.local/bin/clidirstat`
+(run `which clidirstat` to find it). If you used `brew`: `brew uninstall clidirstat`.
+If you used `cargo`: `cargo uninstall clidirstat`.
 
 ## Usage
 
