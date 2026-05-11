@@ -201,7 +201,7 @@ impl App {
         };
 
         // Right: minimal keymap hints.
-        let right = "q quit · ? help · Tab focus · Enter zoom  ";
+        let right = "q quit · ? help · c colors · Tab focus · Enter zoom  ";
 
         let (bar_bg, strong_fg, muted_fg) = match self.theme {
             Theme::Light => (
